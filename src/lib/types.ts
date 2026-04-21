@@ -34,6 +34,20 @@ export interface Lead {
   created_at: string;
 }
 
+export interface UserProfile {
+  id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  subscription_status: "free" | "active" | "past_due" | "canceled" | "trialing";
+  current_period_end: string | null;
+}
+
+export interface UsageInfo {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+}
+
 export type RunStatus =
   | "QUEUED"
   | "WAITING_FOR_DEPLOY"

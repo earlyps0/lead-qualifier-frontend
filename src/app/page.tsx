@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LeadForm } from "@/components/LeadForm";
 import { ResultCard } from "@/components/ResultCard";
 import { createClient } from "@/lib/supabase/client";
-import type { LeadInput, QualificationResult, RunStatus } from "@/lib/types";
+import type { LeadInput, QualificationResult, RunStatus, UsageInfo } from "@/lib/types";
 
 const TERMINAL_STATUSES: RunStatus[] = [
   "COMPLETED",
@@ -23,12 +23,19 @@ type AppState =
   | { phase: "idle" }
   | { phase: "analyzing" }
   | { phase: "done"; result: QualificationResult }
-  | { phase: "error"; message: string };
+  | { phase: "error"; message: string; limitReached?: boolean };
 
 export default function Home() {
   const router = useRouter();
   const [state, setState] = useState<AppState>({ phase: "idle" });
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/qualify/usage")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => data && setUsage(data));
+  }, []);
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -54,12 +61,23 @@ export default function Home() {
         body: JSON.stringify(data),
       });
 
+      if (triggerRes.status === 429) {
+        const err = await triggerRes.json();
+        setState({ phase: "error", message: err.message ?? "Daily limit reached.", limitReached: true });
+        return;
+      }
+
       if (!triggerRes.ok) {
         const err = await triggerRes.json();
         throw new Error(err.error ?? "Failed to start analysis");
       }
 
-      const { runId } = await triggerRes.json();
+      const { runId, remaining } = await triggerRes.json();
+
+      // Optimistically update usage
+      if (remaining !== null && remaining !== undefined) {
+        setUsage((prev) => prev ? { ...prev, used: (prev.limit ?? 2) - remaining - 1 + 1, remaining } : prev);
+      }
 
       pollRef.current = setInterval(async () => {
         try {
@@ -75,6 +93,10 @@ export default function Home() {
             stopPolling();
             if (status === "COMPLETED" && output) {
               setState({ phase: "done", result: output });
+              // Refresh usage after successful qualification
+              fetch("/api/qualify/usage")
+                .then((r) => r.ok ? r.json() : null)
+                .then((d) => d && setUsage(d));
             } else {
               setState({
                 phase: "error",
@@ -96,6 +118,7 @@ export default function Home() {
   }
 
   const isLoading = state.phase === "analyzing";
+  const showUsageBanner = usage && usage.limit !== null;
 
   return (
     <main className="min-h-screen px-4 py-12 sm:px-8">
@@ -115,6 +138,12 @@ export default function Home() {
             >
               History
             </Link>
+            <Link
+              href="/billing"
+              className="text-xs font-mono text-[#475569] hover:text-[#CBD5E1] transition-colors"
+            >
+              Billing
+            </Link>
             <button
               onClick={handleSignOut}
               className="text-xs font-mono text-[#475569] hover:text-[#CBD5E1] transition-colors border border-[#1C2A3D] rounded px-2.5 py-1"
@@ -131,6 +160,32 @@ export default function Home() {
           <span className="text-[#64748B] font-mono">BANT</span> framework —
           Budget, Authority, Need, Timeline — scored by Claude AI.
         </p>
+
+        {/* Free tier usage banner */}
+        {showUsageBanner && (
+          <div className="mt-4 flex items-center gap-3 text-xs font-mono">
+            <div className="flex items-center gap-2 text-[#475569]">
+              <div className="flex gap-0.5">
+                {Array.from({ length: usage.limit ?? 2 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2 h-2 rounded-full ${i < (usage.used ?? 0) ? "bg-[#3B82F6]" : "bg-[#1C2A3D]"}`}
+                  />
+                ))}
+              </div>
+              <span>
+                {usage.used}/{usage.limit} free qualifications today
+              </span>
+            </div>
+            {usage.remaining === 0 ? (
+              <Link href="/billing" className="text-[#3B82F6] hover:text-[#60A5FA] transition-colors">
+                Upgrade for unlimited →
+              </Link>
+            ) : (
+              <span className="text-[#334155]">{usage.remaining} remaining</span>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Two-column layout */}
@@ -205,22 +260,39 @@ export default function Home() {
           {state.phase === "done" && <ResultCard result={state.result} />}
 
           {state.phase === "error" && (
-            <div className="rounded-2xl border border-[#F87171]/30 bg-[#F87171]/5 p-8 flex flex-col items-center gap-4 min-h-40 text-center">
-              <div className="w-10 h-10 rounded-full border border-[#F87171]/30 flex items-center justify-center">
-                <span className="text-[#F87171] text-lg">!</span>
+            <div className={`rounded-2xl border p-8 flex flex-col items-center gap-4 min-h-40 text-center ${
+              state.limitReached
+                ? "border-[#3B82F6]/30 bg-[#3B82F6]/5"
+                : "border-[#F87171]/30 bg-[#F87171]/5"
+            }`}>
+              <div className={`w-10 h-10 rounded-full border flex items-center justify-center ${
+                state.limitReached ? "border-[#3B82F6]/30" : "border-[#F87171]/30"
+              }`}>
+                <span className={`text-lg ${state.limitReached ? "text-[#3B82F6]" : "text-[#F87171]"}`}>
+                  {state.limitReached ? "↑" : "!"}
+                </span>
               </div>
               <div>
-                <p className="text-sm text-[#F87171] font-mono">
-                  Analysis Failed
+                <p className={`text-sm font-mono ${state.limitReached ? "text-[#3B82F6]" : "text-[#F87171]"}`}>
+                  {state.limitReached ? "Daily Limit Reached" : "Analysis Failed"}
                 </p>
                 <p className="text-xs text-[#64748B] mt-1">{state.message}</p>
               </div>
-              <button
-                onClick={() => setState({ phase: "idle" })}
-                className="text-xs font-mono text-[#475569] hover:text-[#CBD5E1] transition-colors underline underline-offset-2"
-              >
-                Try again
-              </button>
+              {state.limitReached ? (
+                <Link
+                  href="/billing"
+                  className="text-xs font-mono bg-[#3B82F6] hover:bg-[#2563EB] text-white rounded-lg px-4 py-2 transition-colors"
+                >
+                  Upgrade to Pro — $29/month
+                </Link>
+              ) : (
+                <button
+                  onClick={() => setState({ phase: "idle" })}
+                  className="text-xs font-mono text-[#475569] hover:text-[#CBD5E1] transition-colors underline underline-offset-2"
+                >
+                  Try again
+                </button>
+              )}
             </div>
           )}
         </div>
