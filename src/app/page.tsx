@@ -1,8 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { LeadForm } from "@/components/LeadForm";
 import { ResultCard } from "@/components/ResultCard";
+import { createClient } from "@/lib/supabase/client";
 import type { LeadInput, QualificationResult, RunStatus } from "@/lib/types";
 
 const TERMINAL_STATUSES: RunStatus[] = [
@@ -23,8 +26,15 @@ type AppState =
   | { phase: "error"; message: string };
 
 export default function Home() {
+  const router = useRouter();
   const [state, setState] = useState<AppState>({ phase: "idle" });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
 
   function stopPolling() {
     if (pollRef.current) {
@@ -91,11 +101,27 @@ export default function Home() {
     <main className="min-h-screen px-4 py-12 sm:px-8">
       {/* Header */}
       <header className="max-w-5xl mx-auto mb-12">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
-          <span className="font-mono text-xs tracking-widest uppercase text-[#475569]">
-            AI-Powered
-          </span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
+            <span className="font-mono text-xs tracking-widest uppercase text-[#475569]">
+              AI-Powered
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/history"
+              className="text-xs font-mono text-[#475569] hover:text-[#CBD5E1] transition-colors"
+            >
+              History
+            </Link>
+            <button
+              onClick={handleSignOut}
+              className="text-xs font-mono text-[#475569] hover:text-[#CBD5E1] transition-colors border border-[#1C2A3D] rounded px-2.5 py-1"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
         <h1 className="font-serif text-4xl sm:text-5xl text-[#E2E8F0] mb-3">
           Lead Qualifier

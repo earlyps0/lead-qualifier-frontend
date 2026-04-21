@@ -19,6 +19,21 @@ export interface QualificationResult {
   };
 }
 
+export interface Lead {
+  id: string;
+  user_id: string;
+  company_name: string;
+  industry: string;
+  budget: string;
+  score: number;
+  summary: string;
+  bant_budget: number;
+  bant_authority: number;
+  bant_need: number;
+  bant_timeline: number;
+  created_at: string;
+}
+
 export type RunStatus =
   | "QUEUED"
   | "WAITING_FOR_DEPLOY"
