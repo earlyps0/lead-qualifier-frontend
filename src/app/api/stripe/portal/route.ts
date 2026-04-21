@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { stripe } from "@/lib/stripe";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";

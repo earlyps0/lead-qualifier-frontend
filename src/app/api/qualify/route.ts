@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { tasks, runs } from "@trigger.dev/sdk/v3";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
